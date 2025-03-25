@@ -109,6 +109,9 @@ pnadc_receita_final <- pnadc_receita_final %>% mutate(`Outros` =  replace_na(`Ou
 pnadc_receita_final <- pnadc_receita_final %>% mutate(capital = `Rendimentos de Aplicações Financeiras` + `Ganhos Líquidos em Renda Variável`+`Juros sobre Capital Próprio` + Outros)
 pnadc_receita_final <- pnadc_receita_final %>% mutate(imposto_capital = (capital/(1-0.15)-capital))
 pnadc_receita_final$renda_irpfepnad <- coalesce(pnadc_receita_final$rendimento_todasfontes_calibrado, pnadc_receita_final$rendimento_todasfontes)
+
+pnadc_receita_final <- pnadc_receita_final %>% mutate(`Rendimentos de Caderneta de Poupança etc` = replace_na(`Rendimentos de Caderneta de Poupança etc`,0))
+pnadc_receita_final <- pnadc_receita_final %>% mutate(`Indenização por Rescisão do Contrato de Trabalho etc` = replace_na(`Indenização por Rescisão do Contrato de Trabalho etc`,0))
 pnadc_receita_final <- pnadc_receita_final %>% mutate(renda_base = renda_irpfepnad - `Rendimentos Recebidos Acumuladamente`-`Ganhos de Capital na Alienação de Bens/Direitos`-`Rendimentos de Caderneta de Poupança etc`-`Indenização por Rescisão do Contrato de Trabalho etc`)
 pnadc_receita_final <- pnadc_receita_final %>% mutate(imposto_withholding = imposto_capital+imposto_plr)
 pnadc_receita_final <- pnadc_receita_final %>% mutate(imposto_withholding = replace_na(imposto_withholding,0))
@@ -188,9 +191,6 @@ Top_Aprop(pnadc_receita_final$renda_pos_atual, pnadc_receita_final$peso_comcalib
 Top_Aprop(pnadc_receita_final$renda_pos_atual, pnadc_receita_final$peso_comcalib, 91)
 StatsGini(pnadc_receita_final$renda_pos_atual, pnadc_receita_final$peso_comcalib)
 
-cat("IRPF total atual (R$ bilhões/ano):", irpf_total_atual_mensal, "\n")
-cat("Custo da isenção (redução) (R$ bilhões/ano):", custo_isencao_mensal, "\n")
-
 #-----------------------------------------------------------------------
 # 7) GRÁFICO DE ALÍQUOTAS EFETIVAS MENSAL
 #    - Dividimos em quantis (para < 50k), "Ricos" (50k-100k), "Milionários" (>= 100k)
@@ -220,8 +220,8 @@ pnadc_receita_final <- pnadc_receita_final %>%
   )
 
 pnadc_receita_agg <- pnadc_receita_final %>% group_by(divisao_renda) %>%  
-                                               summarise(Regime_Atual = sum((imposto_withholding+irpf_mensal_antigo)*peso_comcalib)/sum(renda_base*peso_comcalib),
-                                                         Nova_Proposta = sum(imposto_calculado*peso_comcalib)/sum(renda_base*peso_comcalib))
+                                               summarise(Regime_Atual = sum((imposto_withholding+irpf_mensal_antigo)*peso_comcalib)/sum(renda_base*peso_comcalib)*100,
+                                                         Nova_Proposta = sum(imposto_calculado*peso_comcalib)/sum(renda_base*peso_comcalib)*100)
 
 # Converte para formato longo
 df_long <- pnadc_receita_agg %>%

@@ -1,6 +1,9 @@
 gc()
 rm(list=ls())
 
+
+# 0 - Imports e Carregamento da Base --------------------------------------
+
 library(haven)
 library(ggplot2)
 library(modi)
@@ -16,9 +19,8 @@ setwd(this.dir())
 cores_made <- c("#45ff66", "#eb52ff", "#3366ff","#feff41")
 load('../data/baseRendimentosIsentos.Rda')
 
-#-----------------------------------------------------------------------
-# 1) PARÂMETROS DE FAIXAS E ALÍQUOTAS (REGIME ATUAL)
-#-----------------------------------------------------------------------
+
+# 1 - Parâmetros de Faixas e Alíquotas (Regime Atual) -------------------------
 
 faixa1 <- 2259.20/1.16
 faixa2 <- 2826.65/1.16
@@ -30,9 +32,9 @@ aliquota2 <- 0.15
 aliquota3 <- 0.225   
 aliquota4 <- 0.275  
 
-#-----------------------------------------------------------------------
-# 2) FUNÇÃO IR MENSAL (REGIME ATUAL)
-#-----------------------------------------------------------------------
+
+# 2 - Função IR Mensal (Regime Atual) -------------------------------------
+
 calcula_irpf_mensal_antigo <- function(renda) {
   if (renda <= faixa1) {
     0
@@ -115,12 +117,13 @@ pnadc_receita_final <- pnadc_receita_final %>% mutate(`Indenização por Rescis�
 pnadc_receita_final <- pnadc_receita_final %>% mutate(renda_base = renda_irpfepnad - `Rendimentos Recebidos Acumuladamente`-`Ganhos de Capital na Alienação de Bens/Direitos`-`Rendimentos de Caderneta de Poupança etc`-`Indenização por Rescisão do Contrato de Trabalho etc`)
 pnadc_receita_final <- pnadc_receita_final %>% mutate(imposto_withholding = imposto_capital+imposto_plr)
 pnadc_receita_final <- pnadc_receita_final %>% mutate(imposto_withholding = replace_na(imposto_withholding,0))
-#-----------------------------------------------------------------------
-# 3) FUNÇÃO IR MENSAL (NOVA PROPOSTA ATÉ 7k)
+
+# 3 - Função IR Mensal (Nova Proposta Até 7k) -----------------------------
 #    - Até 5k isento
 #    - 5k a 7k: redução linear
 #    - Acima de 7k: sem abatimento adicional
-#-----------------------------------------------------------------------
+
+
 calcula_irpf_mensal_novo <- function(renda) {
   # Primeiro, calcula o imposto base conforme a redução até 7.000
   if (renda <= 5000) {
@@ -157,19 +160,14 @@ imposto_final <- function(base_tax,renda){
     return(max(base_tax, desired_tax))
   }
 }
+
+
+# 4 - Aplica Imposto e Calcula Arrecadação --------------------------------
+
 pnadc_receita_final <- pnadc_receita_final %>%
   mutate(imposto_calculado = pmap_dbl(list(base_tax, renda_base), imposto_final))
-#-----------------------------------------------------------------------
-# 4) PREPARA O DATAFRAME
-#    - Lê a renda mensal (renda_irpfepnad)
-#    - Calcula IR mensal do regime antigo e o "reduzido" (até 7k)
-#-----------------------------------------------------------------------
 
 
-#-----------------------------------------------------------------------
-# 6) CÁLCULO DE INDICADORES EM TERMOS MENSAIS
-#    (Se quiser valores em bilhões por mês, multiplique por 1.0462 e divida por 1e9)
-#-----------------------------------------------------------------------
 irpf_total_atual <- 1.16 * 12* sum(pnadc_receita_final$peso_comcalib * (pnadc_receita_final$irpf_mensal_antigo+pnadc_receita_final$imposto_withholding)) / 1e9
 custo_isencao_mensal    <- 1.16 * 12* sum(pnadc_receita_final$peso_comcalib *
                                           (pnadc_receita_final$irpf_mensal_antigo -
@@ -178,6 +176,8 @@ irpf_total_novo <- 1.16 * 12* sum(pnadc_receita_final$peso_comcalib * pnadc_rece
 
 pnadc_receita_final <- pnadc_receita_final %>% mutate('renda_pos_novo'= renda_base - imposto_calculado)
 pnadc_receita_final <- pnadc_receita_final %>% mutate('renda_pos_atual'= renda_base - (imposto_withholding+irpf_mensal_antigo))
+
+# 5 - Estatísticas Distributivas ------------------------------------------
 ## GINI - NOVO ###
 source('utils/IneqFunctions.R')
 Bottom_Aprop(pnadc_receita_final$renda_pos_novo, pnadc_receita_final$peso_comcalib, 50)
@@ -191,11 +191,12 @@ Top_Aprop(pnadc_receita_final$renda_pos_atual, pnadc_receita_final$peso_comcalib
 Top_Aprop(pnadc_receita_final$renda_pos_atual, pnadc_receita_final$peso_comcalib, 91)
 StatsGini(pnadc_receita_final$renda_pos_atual, pnadc_receita_final$peso_comcalib)
 
-#-----------------------------------------------------------------------
-# 7) GRÁFICO DE ALÍQUOTAS EFETIVAS MENSAL
+
+# 6 - Gráfico de Alíquotas Efetivas ---------------------------------------
+
+# GRÁFICO DE ALÍQUOTAS EFETIVAS MENSAL
 #    - Dividimos em quantis (para < 50k), "Ricos" (50k-100k), "Milionários" (>= 100k)
 #    - Alíquota efetiva = [sum(IR * peso) / sum(Renda * peso)] * 100
-#-----------------------------------------------------------------------
 #pnadc_receita_final <- pnadc_receita_final %>% mutate(aliq_efetiva_antigo = 
                                                         #sum(irpf_mensal_antigo*peso_comcalib) / sum(renda_irpfepnad*peso_comcalib),
                                                       #aliq_efetiva_novo = sum(irpf_mensal_novo*peso_comcalib)/sum(renda_irpfepnad*peso_comcalib)
@@ -250,3 +251,40 @@ p <- ggplot(df_long, aes(x = divisao_renda, y = Aliquota_Efetiva,
 print(p)
 
 
+# 7 - Simulação - Alíquota Máxima -----------------------------------------
+
+aliMax <- max(pnadc_receita_agg$Nova_Proposta)/100
+
+pnadc_receita_final <- pnadc_receita_final %>% mutate(imposto_ali_max = if_else(divisao_renda %in% c("100", "Ricos", "Milionários"), 
+                                                                                aliMax*renda_base, imposto_calculado))
+
+graphAliMax <- pnadc_receita_final %>% group_by(divisao_renda) %>%  
+  summarise(Regime_Atual = sum((imposto_withholding+irpf_mensal_antigo)*peso_comcalib)/sum(renda_base*peso_comcalib)*100,
+            Nova_Proposta = sum(imposto_calculado*peso_comcalib)/sum(renda_base*peso_comcalib)*100,
+            Proposta_Aliquota_Maxima = sum(imposto_ali_max*peso_comcalib)/sum(renda_base*peso_comcalib)*100)
+
+# Converte para formato longo
+df_long <- graphAliMax %>%
+  pivot_longer(cols = c(Regime_Atual, Nova_Proposta,Proposta_Aliquota_Maxima),
+               names_to = "Regime",
+               values_to = "Aliquota_Efetiva")
+df_long <- df_long %>% distinct()
+df_long <- df_long %>% filter(Aliquota_Efetiva>=0)
+# Ordena o eixo x
+quantis_numeric <- suppressWarnings(as.numeric(df_long$divisao_renda))
+ordem_quantis   <- sort(unique(quantis_numeric[!is.na(quantis_numeric)]))
+ordem_x         <- c(as.character(ordem_quantis), "Ricos", "Milionários")
+df_long$divisao_renda <- factor(df_long$divisao_renda, levels = ordem_x)
+df_long <- df_long %>% filter(!divisao_renda %in% as.character(1:75))
+# Plot
+pAliMax <- ggplot(df_long, aes(x = divisao_renda, y = Aliquota_Efetiva,
+                         color = Regime, group = Regime)) +
+  geom_line(linewidth = 1.25) +
+  theme_bw() +
+  scale_color_manual(values = c("Regime_Atual" = "#3366ff", "Nova_Proposta" = "#eb52ff", "Proposta_Aliquota_Maxima"="#feff41")) +
+  xlab("Posição na Distribuição de Renda (Mensal)") +
+  ylab("Alíquota Efetiva (%)") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom")
+
+print(pAliMax)

@@ -129,10 +129,10 @@ pnadc_receita_final <- pnadc_receita_final %>% mutate(imposto_withholding = repl
 
 calcula_irpf_mensal_novo <- function(renda) {
   # Primeiro, calcula o imposto base conforme a redução até 7.000
-  if (renda <= 5000) {
+  if (renda <= 5000/1.16) {
     base_tax <- 0
-  } else if (renda <= 7000) {
-    reducao <- 1095.11 - 0.156445 * renda
+  } else if (renda <= 7000/1.16) {
+    reducao <- 1095.11/1.16 - 0.156445 * renda
     base_tax <- max(calcula_irpf_mensal_antigo(renda) - reducao, 0)
   } else {
     base_tax <- calcula_irpf_mensal_antigo(renda)
@@ -151,12 +151,13 @@ pnadc_receita_final <- pnadc_receita_final %>%
 
 pnadc_receita_final <- pnadc_receita_final %>% mutate(aliquota_pre_ricos = (imposto_withholding+irpf_mensal_novo)/renda_base)
 pnadc_receita_final <- pnadc_receita_final %>% mutate(base_tax = imposto_withholding+irpf_mensal_novo)
+
 # Aplica complemento para altas rendas:
 imposto_final <- function(base_tax,renda){
-  if (renda <= 50000) {
+  if (renda <= 50000/1.16) {
     return(base_tax)
-  } else if (renda < 100000) {
-    desired_tax <- (((renda * 12 / 60000 - 10)))/100 * renda
+  } else if (renda < 100000/1.16) {
+    desired_tax <- (((renda * 12 / (60000/1.16) - 10)))/100 * renda
     return(max(base_tax, desired_tax))
   } else {  # Caso renda >= 100
     desired_tax <- (0.10) * renda
@@ -217,8 +218,8 @@ pnadc_receita_final$quantis <- weighted_ntile(pnadc_receita_final$renda_base,
 pnadc_receita_final <- pnadc_receita_final %>%
   mutate(
     divisao_renda = case_when(
-      renda_base >= 100000 ~ "Milionários",
-      renda_base >= 50000  ~ "Ricos",
+      renda_base >= 100000/1.16 ~ "Milionários",
+      renda_base >= 50000/1.16  ~ "Ricos",
       TRUE ~ as.character(quantis)
     )
   )
@@ -311,6 +312,9 @@ pnadc_receita_final <- pnadc_receita_final %>%
   mutate(imposto_ali_max_novo = if_else(renda_base > limite_renda,
                                         aliMax * renda_base,
                                         imposto_calculado))
+
+pnadc_receita_final <- pnadc_receita_final %>%
+  mutate(renda_pos_aliMax = renda_base - imposto_ali_max_novo)
 
 irpf_total_novo_aliMax <- 1.16 * 12 * sum(pnadc_receita_final$peso_comcalib * pnadc_receita_final$imposto_ali_max_novo, na.rm = TRUE) / 1e9
 
